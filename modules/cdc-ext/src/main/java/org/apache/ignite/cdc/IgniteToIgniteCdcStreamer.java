@@ -191,6 +191,50 @@ public class IgniteToIgniteCdcStreamer extends CdcEventsApplier implements CdcCo
     }
 
     /** {@inheritDoc} */
+    @Override public void onCacheChange(Iterator<CdcCacheEvent> cacheEvents) {
+        cacheEvents.forEachRemaining(evt -> {
+            if (destinationCache(evt.cacheId()) == null) {
+                // TODO: check if need to set query entities manually.
+                dest.createCache(evt.configuration());
+
+                return;
+            }
+
+            throw new UnsupportedOperationException("Update of cache configuration not supported.");
+        });
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onCacheDestroy(Iterator<Integer> caches) {
+        caches.forEachRemaining(cacheId -> {
+            String cacheName = destinationCache(cacheId);
+
+            if (cacheName == null) {
+                log.error("Unknown destroyed cache. [cacheId=" + cacheId + ']');
+
+                return;
+            }
+
+            log.info("Destroying cache[name=" + cacheName + ", id=" + cacheId + ']');
+
+            dest.destroyCache(cacheName);
+        });
+    }
+
+    /**
+     * @param cacheId id to find.
+     * @return Cache name or {@code null} if not found.
+     */
+    private String destinationCache(Integer cacheId) {
+        for (String name : dest.cacheNames()) {
+            if (CU.cacheId(name) == cacheId)
+                return name;
+        }
+
+        return null;
+    }
+
+    /** {@inheritDoc} */
     @Override public void stop() {
         dest.close();
     }

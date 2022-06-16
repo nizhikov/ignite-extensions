@@ -254,14 +254,16 @@ public abstract class AbstractReplicationTest extends GridCommonAbstractTest {
         List<IgniteInternalFuture<?>> futs = startActivePassiveCdc(ACTIVE_PASSIVE_CACHE);
 
         try {
-            IgniteCache<Integer, ConflictResolvableTestData> destCache = createCache(destCluster[0], ACTIVE_PASSIVE_CACHE);
-
             // Updates for "ignored-cache" should be ignored because of CDC consume configuration.
             runAsync(generateData(IGNORED_CACHE, srcCluster[srcCluster.length - 1], IntStream.range(0, KEYS_CNT)));
             runAsync(generateData(ACTIVE_PASSIVE_CACHE, srcCluster[srcCluster.length - 1], IntStream.range(0, KEYS_CNT)));
 
             IgniteCache<Integer, ConflictResolvableTestData> srcCache =
                 createCache(srcCluster[srcCluster.length - 1], ACTIVE_PASSIVE_CACHE);
+
+            assertTrue(waitForCondition(() -> destCluster[0].cacheNames().contains(ACTIVE_PASSIVE_CACHE), getTestTimeout()));
+
+            IgniteCache<Integer, ConflictResolvableTestData> destCache = destCluster[0].cache(ACTIVE_PASSIVE_CACHE);
 
             waitForSameData(srcCache, destCache, KEYS_CNT, WaitDataMode.EXISTS, futs);
 
@@ -316,13 +318,17 @@ public abstract class AbstractReplicationTest extends GridCommonAbstractTest {
             "ATOMICITY=" + atomicity.name() + "\";";
 
         executeSql(srcCluster[0], createTbl);
-        executeSql(destCluster[0], createTbl);
 
         IntStream.range(0, KEYS_CNT).forEach(i -> addData.accept(srcCluster[0], i));
 
         List<IgniteInternalFuture<?>> futs = startActivePassiveCdc(name);
 
         try {
+            assertTrue(waitForCondition(
+                () -> !executeSql(destCluster[0], "SELECT * FROM SYS.TABLES WHERE TABLE_NAME = '" + name + "'").isEmpty(),
+                getTestTimeout()
+            ));
+
             Function<Integer, GridAbsPredicate> waitForTblSz = expSz -> () -> {
                 long cnt = (Long)executeSql(destCluster[0], "SELECT COUNT(*) FROM " + name).get(0).get(0);
 
@@ -362,13 +368,16 @@ public abstract class AbstractReplicationTest extends GridCommonAbstractTest {
         String deleteQry = "DELETE FROM T1";
 
         executeSql(srcCluster[0], createTbl);
-        executeSql(destCluster[0], createTbl);
-
         IntStream.range(0, KEYS_CNT).forEach(id -> executeSql(srcCluster[0], insertQry, id, "Name" + id));
 
         List<IgniteInternalFuture<?>> futs = startActivePassiveCdc("T1");
 
         try {
+            assertTrue(waitForCondition(
+                () -> !executeSql(destCluster[0], "SELECT * FROM SYS.TABLES WHERE TABLE_NAME = 'T1'").isEmpty(),
+                getTestTimeout()
+            ));
+
             Function<Integer, GridAbsPredicate> waitForTblSz = expSz -> () -> {
                 long cnt = (Long)executeSql(destCluster[0], "SELECT COUNT(*) FROM T1").get(0).get(0);
 
